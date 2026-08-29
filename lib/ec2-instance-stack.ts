@@ -14,7 +14,7 @@ export class Ec2InstanceStack extends cdk.Stack {
     const instance = new ec2.Instance(this, 'AppInstance', {
       vpc: props.vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
-      instanceType: new ec2.InstanceType('t4.nano'),
+      instanceType: new ec2.InstanceType('t4g.nano'),
       machineImage: ec2.MachineImage.latestAmazonLinux2023(),
       ssmSessionPermissions: true,
     });

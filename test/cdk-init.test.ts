@@ -50,7 +50,7 @@ test('EC2 instance stack is separated and configured for SSM on private subnet',
   networkTemplate.resourceCountIs('AWS::EC2::Instance', 0);
   ec2Template.resourceCountIs('AWS::EC2::Instance', 1);
   ec2Template.hasResourceProperties('AWS::EC2::Instance', {
-    InstanceType: 't4.nano',
+    InstanceType: 't4g.nano',
     SubnetId: {
       'Fn::ImportValue': Match.stringLikeRegexp('PrivateWithEgress'),
     },
