@@ -3,6 +3,7 @@ import { Match, Template } from 'aws-cdk-lib/assertions';
 import * as CdkInit from '../lib/cdk-init-stack';
 import { Ec2InstanceStack } from '../lib/ec2-instance-stack';
 
+// VPCのCIDRとNAT Gateway数が要件どおりかを確認するテスト
 test('VPC is configured with required CIDR and NAT gateway count', () => {
   const app = new cdk.App();
   const stack = new CdkInit.CdkInitStack(app, 'MyTestStack');
@@ -14,6 +15,7 @@ test('VPC is configured with required CIDR and NAT gateway count', () => {
   template.resourceCountIs('AWS::EC2::NatGateway', 1);
 });
 
+// VPC配下のサブネット数とCIDRマスク構成が要件どおりかを確認するテスト
 test('VPC subnet layout matches required masks on 2 AZs', () => {
   const app = new cdk.App();
   const stack = new CdkInit.CdkInitStack(app, 'MyTestStack');
@@ -34,6 +36,7 @@ test('VPC subnet layout matches required masks on 2 AZs', () => {
   expect(subnetBits.filter((bits) => bits === '20')).toHaveLength(4); // /20
 });
 
+// EC2スタック分離と、インスタンス設定/SSM権限/出力の要件を確認するテスト
 test('EC2 instance stack is separated and configured for SSM on private subnet', () => {
   const app = new cdk.App();
   const networkStack = new CdkInit.CdkInitStack(app, 'NetworkStack');
