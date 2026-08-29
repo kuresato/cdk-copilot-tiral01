@@ -1,19 +1,25 @@
 import * as cdk from 'aws-cdk-lib';
-import { Template } from 'aws-cdk-lib/assertions';
+import { Match, Template } from 'aws-cdk-lib/assertions';
 import * as CdkInit from '../lib/cdk-init-stack';
+import { Ec2InstanceStack } from '../lib/ec2-instance-stack';
 
+// VPCのCIDRとNAT Gateway数が要件どおりかを確認するテスト
 test('VPC is configured with required CIDR and NAT gateway count', () => {
+  // CDKアプリと対象スタックを生成し、CloudFormationテンプレートとして検証可能な形に変換する
   const app = new cdk.App();
   const stack = new CdkInit.CdkInitStack(app, 'MyTestStack');
   const template = Template.fromStack(stack);
 
+  // 合成テンプレート内のVPCプロパティとNAT Gatewayリソース数を直接検証する
   template.hasResourceProperties('AWS::EC2::VPC', {
     CidrBlock: '10.0.0.0/16',
   });
   template.resourceCountIs('AWS::EC2::NatGateway', 1);
 });
 
+// VPC配下のサブネット数とCIDRマスク構成が要件どおりかを確認するテスト
 test('VPC subnet layout matches required masks on 2 AZs', () => {
+  // スタックを合成し、全リソース辞書を取得してサブネットリソースだけを抽出する
   const app = new cdk.App();
   const stack = new CdkInit.CdkInitStack(app, 'MyTestStack');
   const template = Template.fromStack(stack);
@@ -24,6 +30,7 @@ test('VPC subnet layout matches required masks on 2 AZs', () => {
 
   expect(subnetResources).toHaveLength(8);
 
+  // 各サブネットのCIDRからマスク部だけを取り出して、要件の内訳に一致するかを検証する
   const subnetBits = subnetResources.map(
     (subnet) => subnet.Properties?.CidrBlock?.split('/')[1],
   );
@@ -31,4 +38,49 @@ test('VPC subnet layout matches required masks on 2 AZs', () => {
   expect(subnetBits.filter((bits) => bits === '24')).toHaveLength(2); // /24
   expect(subnetBits.filter((bits) => bits === '18')).toHaveLength(2); // /18
   expect(subnetBits.filter((bits) => bits === '20')).toHaveLength(4); // /20
+});
+
+// EC2スタック分離と、インスタンス設定/SSM権限/出力の要件を確認するテスト
+test('EC2 instance stack is separated and configured for SSM on private subnet', () => {
+  // NetworkスタックとComputeスタックを別々に作成し、VPC参照を引き渡してスタック分離構成を再現する
+  const app = new cdk.App();
+  const networkStack = new CdkInit.CdkInitStack(app, 'NetworkStack');
+  const ec2Stack = new Ec2InstanceStack(app, 'ComputeStack', {
+    vpc: networkStack.vpc,
+  });
+
+  // 各スタックを個別テンプレート化して、どのリソースがどちらの責務かを検証できる状態にする
+  const networkTemplate = Template.fromStack(networkStack);
+  const ec2Template = Template.fromStack(ec2Stack);
+
+  // Network側にEC2が存在しないこと、Compute側にのみEC2が作成されることを確認する
+  networkTemplate.resourceCountIs('AWS::EC2::Instance', 0);
+  ec2Template.resourceCountIs('AWS::EC2::Instance', 1);
+
+  // インスタンスタイプとサブネット参照を検証し、PrivateWithEgressへの配置と要件の型を確認する
+  ec2Template.hasResourceProperties('AWS::EC2::Instance', {
+    InstanceType: 't4g.nano',
+    SubnetId: {
+      'Fn::ImportValue': Match.stringLikeRegexp('PrivateWithEgress'),
+    },
+  });
+
+  // SSM Session Manager接続に必要な管理ポリシーがIAMロールに付与されていることを確認する
+  ec2Template.hasResourceProperties('AWS::IAM::Role', {
+    ManagedPolicyArns: Match.arrayWith([
+      {
+        'Fn::Join': Match.arrayWith([
+          '',
+          Match.arrayWith([
+            'arn:',
+            { Ref: 'AWS::Partition' },
+            ':iam::aws:policy/AmazonSSMManagedInstanceCore',
+          ]),
+        ]),
+      },
+    ]),
+  });
+
+  // 運用時に参照するインスタンスID出力がテンプレートに定義されていることを確認する
+  ec2Template.hasOutput('InstanceId', {});
 });
